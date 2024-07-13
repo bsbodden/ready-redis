@@ -31,6 +31,10 @@ print(client.get('hello'))  # b'world'
 r.cleanup()
 ```
 
+## Google Colab
+
+See [sample notebook](https://colab.research.google.com/drive/1dBgzXVuxsBWoMVIunG7YzEb4nnTaC32v?usp=sharing)
+
 ## Features
 - Embedded Redis instance using TestContainers
 - Customizable Redis version and arguments

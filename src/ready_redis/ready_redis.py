@@ -1,15 +1,84 @@
 import atexit
+import importlib.resources
 import os
 import subprocess
 import sys
-import importlib.resources
 import tempfile
+import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import redis
+import requests
 from testcontainers.compose import DockerCompose
+from tqdm import tqdm
 from ulid import ULID
+
+
+def is_colab_environment():
+    try:
+        import google.colab
+
+        return True
+    except ImportError:
+        return False
+
+
+class ColabRedis:
+    REDIS_STACK_VERSION = "7.2.0-v2"
+    REDIS_STACK_IMAGE = f"redis-stack-server-{REDIS_STACK_VERSION}-x86_64.AppImage"
+    REDIS_STACK_URL = f"https://packages.redis.io/redis-stack/{REDIS_STACK_IMAGE}"
+
+    def __init__(self, port, redis_args):
+        self.port = port
+        self.redis_args = redis_args
+        self.process = None
+
+    def start(self):
+        print(
+            f"Google Colab environment detected. Installing Redis Stack v{self.REDIS_STACK_VERSION}..."
+        )
+
+        try:
+            self._download_redis_stack()
+            self._install_and_run_redis_stack()
+            print("Redis Stack installation completed successfully.")
+        except Exception as e:
+            print(f"Error during Redis Stack installation: {str(e)}")
+            raise
+
+    def _download_redis_stack(self):
+        response = requests.get(self.REDIS_STACK_URL, stream=True)
+        total_size = int(response.headers.get("content-length", 0))
+
+        with open(self.REDIS_STACK_IMAGE, "wb") as file, tqdm(
+            desc="Downloading Redis Stack",
+            total=total_size,
+            unit="iB",
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as progress_bar:
+            for data in response.iter_content(chunk_size=1024):
+                size = file.write(data)
+                progress_bar.update(size)
+
+    def _install_and_run_redis_stack(self):
+        commands = [
+            f"chmod a+x {self.REDIS_STACK_IMAGE}",
+            f"./{self.REDIS_STACK_IMAGE} --port {self.port} {self.redis_args} --daemonize yes",
+            "sleep 2",
+        ]
+
+        for cmd in tqdm(commands, desc="Setting up Redis Stack"):
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"Command failed: {cmd}\nError: {result.stderr}")
+            time.sleep(0.5)  # Add a small delay to make the progress bar more visible
+
+    def stop(self):
+        if self.process:
+            self.process.terminate()
+            self.process.wait()
 
 
 class ReadyRedis:
@@ -80,7 +149,13 @@ class ReadyRedis:
         self._compose = None
         self._env_file = None
         self._cleaned_up = False
-        self._start_redis_container()
+        self._colab_redis = None
+
+        if is_colab_environment():
+            self._start_colab_redis()
+        else:
+            self._start_redis_container()
+
         self._client = redis.Redis(
             host=self._host,
             port=self._port,
@@ -90,12 +165,24 @@ class ReadyRedis:
         )
         atexit.register(self.cleanup)
 
+    def _start_colab_redis(self):
+        self._colab_redis = ColabRedis(self._port, self._redis_args)
+        try:
+            self._colab_redis.start()
+        except Exception as e:
+            print(f"Failed to start Redis Stack in Colab environment: {str(e)}")
+            raise
+
     def _start_redis_container(self):
         try:
             # Try to find the docker-compose.yml file in the package
-            compose_file = importlib.resources.files('ready_redis') / 'docker-compose.yml'
+            compose_file = (
+                importlib.resources.files("ready_redis") / "docker-compose.yml"
+            )
             if not compose_file.is_file():
-                raise FileNotFoundError(f"docker-compose.yml not found at {compose_file}")
+                raise FileNotFoundError(
+                    f"docker-compose.yml not found at {compose_file}"
+                )
         except ImportError:
             # Fallback for development mode
             current_dir = Path(__file__).parent.absolute()
@@ -121,8 +208,6 @@ class ReadyRedis:
             env_file=self._env_file.name,
         )
 
-
-
         try:
             self._compose.start()
         except subprocess.CalledProcessError as e:
@@ -143,7 +228,11 @@ class ReadyRedis:
         if self._cleaned_up:
             return
 
-        if self._compose and sys.meta_path is not None:
+        if self._colab_redis:
+            print("Stopping Redis Stack in Google Colab environment...")
+            self._colab_redis.stop()
+            print("Redis Stack stopped.")
+        elif self._compose and sys.meta_path is not None:
             try:
                 self._compose.stop()
             except Exception as e:
