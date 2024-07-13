@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "ready-redis"
+version = "0.0.1"
+description = "Ready-to-use Redis backed by TestContainers"
+authors = ["Brian Sam-Bodden <bsb@redis.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/bsbodden/ready-redis"
+keywords = ["redis", "redis stack"]
+packages = [{include = "ready_redis", from = "src"}]
+include = ["src/ready_redis/docker-compose.yml"]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0"
+redis = "^5.0.7"
+testcontainers = "^4.7.0"
+python-ulid = "^2.7.0"
+importlib_resources = "^5.0.0" # for Python < 3.9 support
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
