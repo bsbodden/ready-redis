@@ -13,14 +13,146 @@ include = ["src/ready_redis/docker-compose.yml"]
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"
 redis = "^5.0.7"
-testcontainers = "^4.7.0"
+testcontainers = "^4.12.0"
 python-ulid = "^2.7.0"
-importlib_resources = "^5.0.0" # for Python < 3.9 support
+importlib_resources = "^5.0.0"
 tqdm = "^4.66.4"
+requests = "^2.31.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
+pytest-asyncio = "^0.23.0"
+pytest-cov = "^5.0.0"
+black = "^24.0.0"
+isort = "^5.13.0"
+mypy = "^1.11.0"
+pylint = "^3.0.0"
+vulture = "^2.11"
+coverage = {extras = ["toml"], version = "^7.4.0"}
+types-requests = "^2.31.0"
+
+[tool.poetry.scripts]
+format = "scripts:format"
+check-format = "scripts:check_format"
+sort-imports = "scripts:sort_imports"
+check-sort-imports = "scripts:check_sort_imports"
+check-lint = "scripts:check_lint"
+check-mypy = "scripts:check_mypy"
+test = "scripts:test"
+test-verbose = "scripts:test_verbose"
+test-coverage = "scripts:test_coverage"
+coverage-report = "scripts:coverage_report"
+coverage-html = "scripts:coverage_html"
+find-dead-code = "scripts:find_dead_code"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --strict-config --durations=5 -vv -m 'not slow'"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+(
+  | \.egg
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.nox
+  | \.tox
+  | \.venv
+  | _build
+  | build
+  | dist
+  | setup.py
+)
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 88
+skip_gitignore = true
+skip = [".git", ".tox", "dist", ".eggs", "build"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+extra_checks = true
+ignore_missing_imports = true
+disable_error_code = ["typeddict-item", "return-value", "union-attr"]
+
+[tool.pylint.messages_control]
+disable = [
+    "C0111",  # missing-docstring
+    "C0103",  # invalid-name
+    "R0903",  # too-few-public-methods
+    "R0913",  # too-many-arguments
+    "W0105",  # pointless-string-statement
+    "C0301",  # line-too-long
+]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.coverage.run]
+source = ["src/ready_redis"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/scripts.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod"
+]
+show_missing = true
+skip_covered = false
+skip_empty = true
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.vulture]
+paths = ["src/ready_redis"]
+exclude = ["*test*"]
+ignore_names = ["exc_type", "exc_val", "exc_tb"]
+min_confidence = 80
+sort_by_size = true

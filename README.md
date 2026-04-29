@@ -36,16 +36,15 @@ r.cleanup()
 See [sample notebook](https://colab.research.google.com/drive/1dBgzXVuxsBWoMVIunG7YzEb4nnTaC32v?usp=sharing)
 
 ## Features
+
 - Embedded Redis instance using TestContainers
 - Customizable Redis version and arguments
 - Easy-to-use interface with `redis-py` compatibility
 - Singleton pattern to ensure a single Redis instance per configuration
 
-
-# Build and test the package:
+# Build and test the package
 
 ```bash
 poetry build
 poetry run pytest
 ```
-

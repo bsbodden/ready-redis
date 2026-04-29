@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import redis
 import requests
@@ -15,9 +15,9 @@ from tqdm import tqdm
 from ulid import ULID
 
 
-def is_colab_environment():
+def is_colab_environment() -> bool:
     try:
-        import google.colab
+        import google.colab  # noqa: F401
 
         return True
     except ImportError:
@@ -29,12 +29,12 @@ class ColabRedis:
     REDIS_STACK_IMAGE = f"redis-stack-server-{REDIS_STACK_VERSION}-x86_64.AppImage"
     REDIS_STACK_URL = f"https://packages.redis.io/redis-stack/{REDIS_STACK_IMAGE}"
 
-    def __init__(self, port, redis_args):
+    def __init__(self, port: int, redis_args: str) -> None:
         self.port = port
         self.redis_args = redis_args
         self.process = None
 
-    def start(self):
+    def start(self) -> None:
         print(
             f"Google Colab environment detected. Installing Redis Stack v{self.REDIS_STACK_VERSION}..."
         )
@@ -47,22 +47,25 @@ class ColabRedis:
             print(f"Error during Redis Stack installation: {str(e)}")
             raise
 
-    def _download_redis_stack(self):
+    def _download_redis_stack(self) -> None:
         response = requests.get(self.REDIS_STACK_URL, stream=True)
         total_size = int(response.headers.get("content-length", 0))
 
-        with open(self.REDIS_STACK_IMAGE, "wb") as file, tqdm(
-            desc="Downloading Redis Stack",
-            total=total_size,
-            unit="iB",
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as progress_bar:
+        with (
+            open(self.REDIS_STACK_IMAGE, "wb") as file,
+            tqdm(
+                desc="Downloading Redis Stack",
+                total=total_size,
+                unit="iB",
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as progress_bar,
+        ):
             for data in response.iter_content(chunk_size=1024):
                 size = file.write(data)
                 progress_bar.update(size)
 
-    def _install_and_run_redis_stack(self):
+    def _install_and_run_redis_stack(self) -> None:
         commands = [
             f"chmod a+x {self.REDIS_STACK_IMAGE}",
             f"./{self.REDIS_STACK_IMAGE} --port {self.port} {self.redis_args} --daemonize yes",
@@ -75,14 +78,14 @@ class ColabRedis:
                 raise Exception(f"Command failed: {cmd}\nError: {result.stderr}")
             time.sleep(0.5)  # Add a small delay to make the progress bar more visible
 
-    def stop(self):
+    def stop(self) -> None:
         if self.process:
             self.process.terminate()
             self.process.wait()
 
 
 class ReadyRedis:
-    _instances: Dict[Tuple, "ReadyRedis"] = {}
+    _instances: Dict[Tuple[Any, ...], "ReadyRedis"] = {}
 
     @classmethod
     def get(
@@ -96,7 +99,7 @@ class ReadyRedis:
         protocol: int = 3,
         redis_version: str = "latest",
         redis_args: str = "--save '' --appendonly no",
-    ):
+    ) -> "ReadyRedis":
         if redis_container_name is None:
             redis_container_name = f"redis-stack-{str(ULID())}"
 
@@ -146,10 +149,10 @@ class ReadyRedis:
         self._protocol = protocol
         self._redis_version = redis_version
         self._redis_args = redis_args
-        self._compose = None
-        self._env_file = None
+        self._compose: Optional[DockerCompose] = None
+        self._env_file: Optional[Any] = None
         self._cleaned_up = False
-        self._colab_redis = None
+        self._colab_redis: Optional[ColabRedis] = None
 
         if is_colab_environment():
             self._start_colab_redis()
@@ -165,7 +168,7 @@ class ReadyRedis:
         )
         atexit.register(self.cleanup)
 
-    def _start_colab_redis(self):
+    def _start_colab_redis(self) -> None:
         self._colab_redis = ColabRedis(self._port, self._redis_args)
         try:
             self._colab_redis.start()
@@ -173,23 +176,24 @@ class ReadyRedis:
             print(f"Failed to start Redis Stack in Colab environment: {str(e)}")
             raise
 
-    def _start_redis_container(self):
+    def _start_redis_container(self) -> None:
         try:
             # Try to find the docker-compose.yml file in the package
-            compose_file = (
+            compose_path = (
                 importlib.resources.files("ready_redis") / "docker-compose.yml"
             )
-            if not compose_file.is_file():
+            if not compose_path.is_file():
                 raise FileNotFoundError(
-                    f"docker-compose.yml not found at {compose_file}"
+                    f"docker-compose.yml not found at {compose_path}"
                 )
+            compose_file = str(compose_path)
         except ImportError:
             # Fallback for development mode
             current_dir = Path(__file__).parent.absolute()
             project_root = current_dir.parent
-            compose_file = project_root / "docker-compose.yml"
+            compose_file = str(project_root / "docker-compose.yml")
 
-        if not Path(compose_file).is_file():
+        if not Path(str(compose_file)).is_file():
             raise FileNotFoundError(f"docker-compose.yml not found at {compose_file}")
 
         self._env_file = tempfile.NamedTemporaryFile(
@@ -224,7 +228,7 @@ class ReadyRedis:
             else:
                 raise
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         if self._cleaned_up:
             return
 
@@ -247,25 +251,30 @@ class ReadyRedis:
 
         self._cleaned_up = True
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.cleanup()
 
-    def __enter__(self):
+    def __enter__(self) -> redis.Redis:
         return self._client
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Any,  # noqa: ARG002
+        exc_val: Any,  # noqa: ARG002
+        exc_tb: Any,  # noqa: ARG002
+    ) -> None:
         self.cleanup()
 
     @classmethod
-    def shutdown_all(cls):
+    def shutdown_all(cls) -> None:
         for instance in cls._instances.values():
             instance.cleanup()
         cls._instances.clear()
 
     @property
-    def container_name(self):
+    def container_name(self) -> str:
         return self._redis_container_name
 
     @property
-    def client(self):
+    def client(self) -> redis.Redis:
         return self._client

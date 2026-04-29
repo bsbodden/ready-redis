@@ -209,3 +209,11 @@ poetry.toml
 
 # ruff
 .ruff_cache/
+
+# VSCode
+.vscode/
+
+# Project specific
+*.env
+.env.*
+!.env.example
